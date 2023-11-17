@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
-	"image/jpeg"
+	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
+	"time"
 
 	resizeImage "github.com/mshuktuev/resize-vr/resize"
-	"github.com/nfnt/resize"
 	"github.com/schollz/progressbar/v3"
 )
 
@@ -20,51 +21,54 @@ type PathInfo struct {
 }
 
 func main()  {
+	runtime.GOMAXPROCS(6)
+	start := time.Now()
 	images, dirs, err := getDirsInfo("./test")
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	_ =images
-	_ =dirs
+	err = os.RemoveAll("output")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Printf("Images: %d, dirs: %d\n", images, len(dirs))
 
-	bar := progressbar.Default(int64(images))
+	bar := progressbar.Default(int64(images) * 2)
 
 	resizeInfo := resizeImage.ResizeProgress{
 		Progress: bar,
-		Mutex:    &sync.Mutex{},
 		Wg:       &sync.WaitGroup{},
 	}
 
+	for dir := range dirs {
+		outDir := subpath("test", dir)
+		previewDir := filepath.Join("output", "preview", outDir)
+		texturesDir := filepath.Join("output", "textures", outDir)
+		resizeInfo.Wg.Add(2)
+		go resizeDir(dir, previewDir, resizeImage.ImageOptions{
+			Width: 2048,
+			Height: 1024,
+			Quality: 85,
+		}, &resizeInfo)
 
-	// fmt.Println("Total images: ", images)
-	// fmt.Println(dirs)
-
-	file, err := os.Open("./test/VR_TH_Type_A_0001.jpg")
-
-	resizeImage.ResizeImage("./test/TEst_2/Type_A/VR_TH_Type_A_0001.jpg", "output", "test", resizeImage.ImageOptions{
-		Width: 4000,
-		Height: 2000,
-		Quality: 85,
-	}, &resizeInfo)
-
-	if err != nil {
-  	fmt.Fprintln(os.Stderr, err, "cannot read image")
+		go resizeDir(dir, texturesDir, resizeImage.ImageOptions{
+			Width: 4096,
+			Height: 2048,
+			Quality: 85,
+		}, &resizeInfo)
 	}
-	img, err := jpeg.Decode(file)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err, "cannot read image")
-	}
-	file.Close()
-	m := resize.Resize(4000, 2000, img, resize.Lanczos3)
-	out, err := os.Create("test_resized.jpg")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err, "cannot read image")
-	}
-	defer out.Close()
+	resizeInfo.Wg.Wait()
+	elapsed := time.Since(start)
+	log.Printf("Done in %s", elapsed)
+}
 
-	// write new image to file
-	jpeg.Encode(out, m, nil)
+func resizeDir(dir, outDir string, options resizeImage.ImageOptions, resizeInfo *resizeImage.ResizeProgress) {
+	err := resizeImage.ProcessDirs(dir, outDir, options, resizeInfo)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 
@@ -91,16 +95,6 @@ func getDirsInfo(path string) (int, map[string]bool, error) {
 	return images, dirs, nil
 }
 
-func processDirs (path string, resizeInfo *resizeImage.ResizeProgress) error {
-	resizeInfo.Wg.Add(1)
-	dirs, err := os.ReadDir(path)
-	if err != nil {
-		return err
-	}
-	for _, dir := range dirs {
-
-	}
-}
 
 func subpath(homeDir, prevDir string) string {
 	subFiles := ""
