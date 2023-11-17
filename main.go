@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -21,9 +22,24 @@ type PathInfo struct {
 }
 
 func main()  {
-	runtime.GOMAXPROCS(6)
+	cores := flag.Int("core", 6, "Number of CPU cores")
+	flag.Parse()
+	args := flag.Args()
+
+	runtime.GOMAXPROCS(*cores)
+
+	rootDir := args[0]
+	if !filepath.IsAbs(rootDir) {
+		wd, err := os.Getwd()
+		if err != nil {
+			log.Fatal(err)
+		}
+		rootDir = filepath.Join(wd, rootDir)
+	}
+	_, separator := filepath.Split(rootDir)
+
 	start := time.Now()
-	images, dirs, err := getDirsInfo("./test")
+	images, dirs, err := getDirsInfo(rootDir)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -43,17 +59,16 @@ func main()  {
 	}
 
 	for dir := range dirs {
-		outDir := subpath("test", dir)
+		outDir := subpath(separator, dir)
 		previewDir := filepath.Join("output", "preview", outDir)
 		texturesDir := filepath.Join("output", "textures", outDir)
-		resizeInfo.Wg.Add(2)
-		go resizeDir(dir, previewDir, resizeImage.ImageOptions{
+		resizeDir(dir, previewDir, resizeImage.ImageOptions{
 			Width: 2048,
 			Height: 1024,
 			Quality: 85,
 		}, &resizeInfo)
 
-		go resizeDir(dir, texturesDir, resizeImage.ImageOptions{
+		resizeDir(dir, texturesDir, resizeImage.ImageOptions{
 			Width: 4096,
 			Height: 2048,
 			Quality: 85,
@@ -61,14 +76,14 @@ func main()  {
 	}
 	resizeInfo.Wg.Wait()
 	elapsed := time.Since(start)
-	log.Printf("Done in %s", elapsed)
+	fmt.Printf("Done in %s", elapsed)
+	fmt.Scanf("h")
+	os.Exit(0)
 }
 
 func resizeDir(dir, outDir string, options resizeImage.ImageOptions, resizeInfo *resizeImage.ResizeProgress) {
-	err := resizeImage.ProcessDirs(dir, outDir, options, resizeInfo)
-	if err != nil {
-		log.Fatal(err)
-	}
+	resizeInfo.Wg.Add(1)
+	go resizeImage.ProcessDirs(dir, outDir, options, resizeInfo)
 }
 
 

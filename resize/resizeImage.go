@@ -30,6 +30,7 @@ func (rp *ResizeProgress) Increment() {
 	rp.Progress.Add(1)
 }
 
+
 func resizeImage(path , outPath string,  options ImageOptions, resizeInfo *ResizeProgress) error {
 	file, err := os.Open(path)
 
@@ -47,7 +48,10 @@ func resizeImage(path , outPath string,  options ImageOptions, resizeInfo *Resiz
 		fmt.Fprintln(os.Stderr, err, "cannot resize image")
 	}
 	defer out.Close()
-	jpeg.Encode(out, m, &jpeg.Options{Quality: options.Quality})
+	err = jpeg.Encode(out, m, &jpeg.Options{Quality: options.Quality})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err, "cannot save image")
+	}
 	resizeInfo.Increment()
 	return nil
 }
@@ -81,7 +85,10 @@ func ProcessDirs(inputDir, outDir string, imgOptions ImageOptions, resizeInfo *R
 	if err != nil {
 		return err
 	}
-	os.MkdirAll(outDir, os.ModePerm)
+	err = os.MkdirAll(outDir, os.ModePerm)
+	if err != nil {
+		return err
+	}
 	sortFiles(files)
 	count := 1
 	for _, file := range files {
@@ -89,7 +96,10 @@ func ProcessDirs(inputDir, outDir string, imgOptions ImageOptions, resizeInfo *R
 			continue
 		}
 		vrName := fmt.Sprintf("VR%02d.jpg", count)
-		resizeImage(filepath.Join(inputDir, file.Name()), filepath.Join(outDir, vrName), imgOptions, resizeInfo)
+		err = resizeImage(filepath.Join(inputDir, file.Name()), filepath.Join(outDir, vrName), imgOptions, resizeInfo)
+		if err != nil {
+			return err
+		}
 		count++
 	}
 	return nil
